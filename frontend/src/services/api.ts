@@ -5,7 +5,8 @@ import type {
   RiskData,
 } from "../types";
 
-const API_BASE_URL = "http://localhost:5000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
 
 type BackendEnvironmentResponse = {
   temperature: number;
@@ -112,6 +113,7 @@ export async function getAdvisory(
 export async function checkBackendHealth(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE_URL}/api/health`);
+
     return response.ok;
   } catch {
     return false;
