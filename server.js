@@ -5,21 +5,23 @@ require('dotenv').config();
 const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
-app.use(cors());
+
+// Enable open CORS so your teammates can connect from any port (e.g., 3000, 5173)
+app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Health Route
+// Health Check Route
 app.get('/api/health', (req, res) => {
   res.json({ status: 'VayuShield Backend Active' });
 });
 
-// Open-Meteo Environmental Route
-app.get('/api/environmental-data', async (req, res) => {
+// Live Weather & Air Quality Route
+app.get('/api/environmental-data', async (req, res, next) => {
   try {
-    const lat = req.query.lat || 28.6139;
+    const lat = req.query.lat || 28.6139; // Default: Delhi
     const lon = req.query.lon || 77.2090;
 
     const weatherRes = await axios.get(
@@ -40,19 +42,19 @@ app.get('/api/environmental-data', async (req, res) => {
       pm10: aqiRes.data.current.pm10,
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch environmental metrics' });
+    next(error);
   }
 });
 
 // Gemini Health Advisory Route
-app.post('/api/advisory', async (req, res) => {
-  const { profile, envData } = req.body;
-
+app.post('/api/advisory', async (req, res, next) => {
   try {
+    const { profile, envData } = req.body || {};
+
     const prompt = `
     System: Expert medical environmental analyst for VayuShield.
     User Profile: Age ${profile?.age || 30}, Condition: ${profile?.condition || 'None'}, Occupation: ${profile?.occupation || 'General'}.
-    Live Data: Temp ${envData?.temperature}°C, AQI ${envData?.aqi}, PM2.5 ${envData?.pm25}, UV Index ${envData?.uv_index}.
+    Live Data: Temp ${envData?.temperature || 28}°C, AQI ${envData?.aqi || 100}, PM2.5 ${envData?.pm25 || 35}, UV Index ${envData?.uv_index || 3}.
 
     Return strictly a JSON object:
     {
@@ -73,17 +75,36 @@ app.post('/api/advisory', async (req, res) => {
 
     res.json(JSON.parse(response.text));
   } catch (error) {
+    console.warn("Gemini API call failed or timed out. Falling back to default advisory structure.");
     res.json({
-      risk_score: 88,
-      risk_level: "Critical",
-      headline: "Elevated PM2.5 & Thermal Stress Warning",
-      advisory: "Personalized threshold exceeded due to high particulate levels.",
-      precautions: ["Wear an N95 mask outdoors", "Keep emergency inhaler accessible", "Limit exposure 12 PM - 3 PM"],
-      safe_window: "5:00 PM - 7:00 PM"
+      risk_score: 85,
+      risk_level: "High",
+      headline: "Air Quality Alert for Sensitive Groups",
+      advisory: "Particulate levels exceed safe thresholds for your health profile. Limit prolonged outdoor exposure.",
+      precautions: ["Wear an N95 mask outdoors", "Keep emergency medication nearby", "Stay indoors during peak sunlight"],
+      safe_window: "6:00 PM - 8:00 PM"
     });
   }
 });
 
+// Mock Backup Route for Live Demo Safety
+app.get('/api/mock-advisory', (req, res) => {
+  res.json({
+    risk_score: 42,
+    risk_level: "Moderate",
+    headline: "Optimal Conditions with Mild UV Risk",
+    advisory: "Air quality is within reasonable limits. Standard outdoors activity is safe with hydration.",
+    precautions: ["Apply SPF 30+ sunscreen", "Stay hydrated", "Monitor evening air quality updates"],
+    safe_window: "4:00 PM - 6:00 PM"
+  });
+});
+
+// Global Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error("Unhandled Server Error:", err.message);
+  res.status(500).json({ error: "Internal Server Error", details: err.message });
+});
+
 app.listen(PORT, () => {
-  console.log(`VayuShield Backend running on port ${PORT}`);
+  console.log(`VayuShield Backend listening on port ${PORT}`);
 });
