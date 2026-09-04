@@ -17,7 +17,8 @@ import GeminiReasoningCard from './components/visual/GeminiReasoningCard';
 
 import { Shield, Zap, AlertTriangle, Search, SlidersHorizontal, Activity, Sparkles } from 'lucide-react';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// Updated line 20: Reads VITE_API_BASE_URL in production, defaults to localhost in dev
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
 
 function App() {
   const [profile, setProfile] = useState('asthma');
