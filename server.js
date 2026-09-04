@@ -13,18 +13,18 @@ app.use(express.json());
 const PORT = process.env.PORT || 5000;
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Health Check Endpoint
+// 1. Health Check Endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'VayuShield Backend Active' });
 });
 
-// Dynamic City / Coordinate Environmental Data Endpoint
+// 2. Dynamic City / Coordinate Environmental Data Endpoint
 app.get('/api/environmental-data', async (req, res, next) => {
   try {
     let { city, lat, lon } = req.query;
     let cityName = city || 'Delhi';
 
-    // 1. Geocode city name to lat/lon using Open-Meteo Geocoding API
+    // Geocode city name to lat/lon using Open-Meteo Geocoding API
     if (city || (!lat && !lon)) {
       const geoRes = await axios.get(
         `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en&format=json`
@@ -40,12 +40,12 @@ app.get('/api/environmental-data', async (req, res, next) => {
       cityName = `${location.name}, ${location.country || ''}`.trim();
     }
 
-    // 2. Fetch Live Weather Data
+    // Fetch Live Weather Data
     const weatherRes = await axios.get(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,uv_index`
     );
 
-    // 3. Fetch Live Air Quality Data
+    // Fetch Live Air Quality Data
     const aqiRes = await axios.get(
       `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=european_aqi,pm2_5,pm10`
     );
@@ -67,7 +67,41 @@ app.get('/api/environmental-data', async (req, res, next) => {
   }
 });
 
-// Gemini AI Personalised Advisory Endpoint
+// 3. 7-Day Air Quality & Weather History Trend Endpoint
+app.get('/api/history', async (req, res, next) => {
+  try {
+    let { lat, lon, city } = req.query;
+    let cityName = city || 'Delhi';
+
+    if (city || (!lat && !lon)) {
+      const geoRes = await axios.get(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en&format=json`
+      );
+      if (geoRes.data.results && geoRes.data.results.length > 0) {
+        lat = geoRes.data.results[0].latitude;
+        lon = geoRes.data.results[0].longitude;
+      } else {
+        lat = 28.6139; lon = 77.2090;
+      }
+    }
+
+    // Fetch past 7 days of AQI data from Open-Meteo
+    const historyRes = await axios.get(
+      `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&past_days=7&hourly=european_aqi,pm2_5,pm10`
+    );
+
+    res.json({
+      city: cityName,
+      timestamps: historyRes.data.hourly.time,
+      aqi_trend: historyRes.data.hourly.european_aqi,
+      pm25_trend: historyRes.data.hourly.pm2_5,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// 4. Gemini AI Personalised Advisory Endpoint
 app.post('/api/advisory', async (req, res, next) => {
   try {
     const { profile, envData } = req.body || {};
@@ -109,7 +143,7 @@ app.post('/api/advisory', async (req, res, next) => {
   }
 });
 
-// Mock Backup Route for Safety During Live Demos
+// 5. Mock Backup Route for Safety During Live Demos
 app.get('/api/mock-advisory', (req, res) => {
   res.json({
     risk_score: 42,
