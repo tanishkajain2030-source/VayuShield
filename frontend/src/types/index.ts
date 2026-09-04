@@ -27,3 +27,22 @@ export type RiskData = {
   score: number;
   level: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
 };
+
+export type HistoryData = {
+  city: string;
+  timestamps: string[];
+  aqi_trend: number[];
+  pm25_trend: number[];
+};
+
+export type LocationData = {
+  city: string;
+  aqi: number;
+  pm25: number;
+};
+
+export type LocationComparisonData = {
+  origin: LocationData;
+  destination: LocationData;
+  safer_option: string;
+};

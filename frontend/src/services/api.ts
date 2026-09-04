@@ -1,6 +1,8 @@
 import type {
   AdvisoryData,
   EnvironmentData,
+  HistoryData,
+  LocationComparisonData,
   Persona,
   RiskData,
 } from "../types";
@@ -108,6 +110,40 @@ export async function getAdvisory(
       safeWindow: data.safe_window,
     },
   };
+}
+
+export async function getHistory(): Promise<HistoryData> {
+  const response = await fetch(`${API_BASE_URL}/api/history`);
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch environmental history");
+  }
+
+  const data: HistoryData = await response.json();
+
+  return data;
+}
+
+export async function compareLocations(
+  origin: string,
+  destination: string,
+): Promise<LocationComparisonData> {
+  const params = new URLSearchParams({
+    origin,
+    destination,
+  });
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/compare-locations?${params.toString()}`,
+  );
+
+  if (!response.ok) {
+    throw new Error("Failed to compare locations");
+  }
+
+  const data: LocationComparisonData = await response.json();
+
+  return data;
 }
 
 export async function checkBackendHealth(): Promise<boolean> {
