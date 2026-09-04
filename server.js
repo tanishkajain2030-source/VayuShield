@@ -6,33 +6,54 @@ const { GoogleGenAI } = require('@google/genai');
 
 const app = express();
 
-// Enable open CORS so your teammates can connect from any port (e.g., 3000, 5173)
+// Enable open CORS for seamless frontend integration
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-// Health Check Route
+// Health Check Endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'VayuShield Backend Active' });
 });
 
-// Live Weather & Air Quality Route
+// Dynamic City / Coordinate Environmental Data Endpoint
 app.get('/api/environmental-data', async (req, res, next) => {
   try {
-    const lat = req.query.lat || 28.6139; // Default: Delhi
-    const lon = req.query.lon || 77.2090;
+    let { city, lat, lon } = req.query;
+    let cityName = city || 'Delhi';
 
+    // 1. Geocode city name to lat/lon using Open-Meteo Geocoding API
+    if (city || (!lat && !lon)) {
+      const geoRes = await axios.get(
+        `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=1&language=en&format=json`
+      );
+
+      if (!geoRes.data.results || geoRes.data.results.length === 0) {
+        return res.status(404).json({ error: `City '${cityName}' not found.` });
+      }
+
+      const location = geoRes.data.results[0];
+      lat = location.latitude;
+      lon = location.longitude;
+      cityName = `${location.name}, ${location.country || ''}`.trim();
+    }
+
+    // 2. Fetch Live Weather Data
     const weatherRes = await axios.get(
       `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,uv_index`
     );
 
+    // 3. Fetch Live Air Quality Data
     const aqiRes = await axios.get(
       `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}&current=european_aqi,pm2_5,pm10`
     );
 
     res.json({
+      location: cityName,
+      latitude: lat,
+      longitude: lon,
       temperature: weatherRes.data.current.temperature_2m,
       apparent_temp: weatherRes.data.current.apparent_temperature,
       humidity: weatherRes.data.current.relative_humidity_2m,
@@ -46,13 +67,14 @@ app.get('/api/environmental-data', async (req, res, next) => {
   }
 });
 
-// Gemini Health Advisory Route
+// Gemini AI Personalised Advisory Endpoint
 app.post('/api/advisory', async (req, res, next) => {
   try {
     const { profile, envData } = req.body || {};
 
     const prompt = `
     System: Expert medical environmental analyst for VayuShield.
+    Location: ${envData?.location || 'Unknown'}
     User Profile: Age ${profile?.age || 30}, Condition: ${profile?.condition || 'None'}, Occupation: ${profile?.occupation || 'General'}.
     Live Data: Temp ${envData?.temperature || 28}°C, AQI ${envData?.aqi || 100}, PM2.5 ${envData?.pm25 || 35}, UV Index ${envData?.uv_index || 3}.
 
@@ -75,7 +97,7 @@ app.post('/api/advisory', async (req, res, next) => {
 
     res.json(JSON.parse(response.text));
   } catch (error) {
-    console.warn("Gemini API call failed or timed out. Falling back to default advisory structure.");
+    console.warn("Gemini API fallback triggered.");
     res.json({
       risk_score: 85,
       risk_level: "High",
@@ -87,7 +109,7 @@ app.post('/api/advisory', async (req, res, next) => {
   }
 });
 
-// Mock Backup Route for Live Demo Safety
+// Mock Backup Route for Safety During Live Demos
 app.get('/api/mock-advisory', (req, res) => {
   res.json({
     risk_score: 42,
@@ -99,7 +121,7 @@ app.get('/api/mock-advisory', (req, res) => {
   });
 });
 
-// Global Error Handling Middleware
+// Global Error Handler
 app.use((err, req, res, next) => {
   console.error("Unhandled Server Error:", err.message);
   res.status(500).json({ error: "Internal Server Error", details: err.message });
