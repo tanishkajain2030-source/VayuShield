@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 import RiskGauge from './components/RiskGauge';
 import VoiceAdvisory from './components/VoiceAdvisory';
@@ -16,32 +17,71 @@ import GeminiReasoningCard from './components/visual/GeminiReasoningCard';
 
 import { Shield, Zap, AlertTriangle, Search, SlidersHorizontal, Activity, Sparkles } from 'lucide-react';
 
+const API_BASE_URL = 'http://localhost:5000/api';
+
 function App() {
   const [profile, setProfile] = useState('asthma');
   const [citySearch, setCitySearch] = useState('New Delhi');
+  const [activeCity, setActiveCity] = useState('New Delhi');
   const [isSimulatedSpike, setIsSimulatedSpike] = useState(false);
 
-  const getRiskScore = () => {
-    let base = 30;
-    if (profile === 'asthma') base = 78;
-    if (profile === 'athlete') base = 35;
-    if (profile === 'senior') base = 65;
-    return isSimulatedSpike ? Math.min(base + 35, 98) : base;
+  // Live Backend Data States
+  const [envData, setEnvData] = useState(null);
+  const [aiAdvisory, setAiAdvisory] = useState(null);
+  const [historyData, setHistoryData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // 1. Fetch live metrics & AI advisory from backend
+  const fetchAllData = async (targetCity, targetProfile) => {
+    setLoading(true);
+    try {
+      // Fetch environmental metrics
+      const envRes = await axios.get(`${API_BASE_URL}/environmental-data?city=${encodeURIComponent(targetCity)}`);
+      setEnvData(envRes.data);
+
+      // Fetch 7-day trend history
+      const historyRes = await axios.get(`${API_BASE_URL}/history?city=${encodeURIComponent(targetCity)}`);
+      setHistoryData(historyRes.data);
+
+      // Fetch personalized Gemini AI advisory
+      const aiRes = await axios.post(`${API_BASE_URL}/advisory`, {
+        profile: { condition: targetProfile, age: targetProfile === 'senior' ? 68 : 28 },
+        envData: envRes.data
+      });
+      setAiAdvisory(aiRes.data);
+    } catch (error) {
+      console.error("Error fetching live backend data:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const currentScore = getRiskScore();
+  // Initial load & persona switch trigger
+  useEffect(() => {
+    fetchAllData(activeCity, profile);
+  }, []);
 
-  const getAdvisoryText = () => {
-    if (isSimulatedSpike) return "ALERT: Sudden surge in PM2.5 detected. High environmental hazard. Indoor isolation advised immediately.";
-    if (profile === 'asthma') return "Elevated vulnerability detected for Asthma profile. Air sensitivity is high—limit outdoor physical exposure.";
-    if (profile === 'senior') return "Moderate risk for elderly profile. PM2.5 levels may trigger slight respiratory discomfort.";
-    if (profile === 'athlete') return "Optimal outdoor training window active. Environmental respiratory load is minimal.";
-    return "Standard environmental conditions monitored. Air quality stable for routine activities.";
+  // Handle city search form submit
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    if (citySearch.trim()) {
+      setActiveCity(citySearch);
+      fetchAllData(citySearch, profile);
+    }
   };
+
+  // Dynamic Risk Score calculation combining live backend data and simulated spikes
+  const currentScore = isSimulatedSpike 
+    ? 92 
+    : (aiAdvisory?.risk_score || envData?.aqi || 45);
+
+  const currentAdvisoryText = isSimulatedSpike 
+    ? "ALERT: Sudden surge in PM2.5 detected. High environmental hazard. Indoor isolation advised immediately."
+    : (aiAdvisory?.advisory || "Standard environmental conditions monitored. Air quality stable for routine activities.");
 
   return (
     <div className="relative min-h-screen bg-slate-950/80 text-slate-100 selection:bg-teal-500 selection:text-slate-950 font-sans pb-12">
-      {/* Background Pink Cloud Layer */}
+      {/* Background Layer */}
       <ParticleBackground score={currentScore} />
 
       <motion.div 
@@ -54,8 +94,6 @@ function App() {
         {/* ================= 1. PROMINENT HERO BRAND BANNER ================= */}
         <section className="px-6 py-5 bg-gradient-to-r from-slate-900/90 via-slate-900/95 to-slate-950/90 border border-slate-800/90 rounded-2xl backdrop-blur-2xl shadow-2xl flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            
-            {/* Aesthetic Glowing Teal Emblem */}
             <div className="relative p-3.5 bg-slate-950/80 border border-teal-500/40 rounded-2xl shadow-[0_0_25px_rgba(20,184,166,0.25)] text-teal-400 group cursor-pointer transition-transform hover:scale-105">
               <Shield size={32} className="relative z-10 drop-shadow-[0_0_8px_rgba(45,212,191,0.8)]" />
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-teal-500/20 to-emerald-500/0 blur-sm pointer-events-none" />
@@ -63,18 +101,16 @@ function App() {
 
             <div>
               <div className="flex items-center gap-3">
-                {/* Tech Font Styling for VAYUSHIELD */}
                 <h1 className="text-3xl sm:text-4xl font-extrabold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-teal-300 uppercase font-mono drop-shadow-sm">
                   VAYUSHIELD
                 </h1>
-                
                 <span className="text-[11px] font-mono font-semibold px-3 py-1 rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-300 flex items-center gap-1.5 shadow-inner">
                   <Sparkles size={11} className="text-teal-400 animate-pulse" />
-                  v1.0 AI LIVE
+                  {loading ? 'FETCHING LIVE...' : 'v1.0 AI LIVE'}
                 </span>
               </div>
               <p className="text-xs sm:text-sm font-medium text-slate-400 mt-1 tracking-wide">
-                Personalized Environmental Defense System
+                Personalized Environmental Defense System — Showing data for <span className="text-teal-300 font-bold">{envData?.location || activeCity}</span>
               </p>
             </div>
           </div>
@@ -94,8 +130,8 @@ function App() {
 
           {/* Integrated Controls */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Search Input */}
-            <div className="relative">
+            {/* Live Search Form */}
+            <form onSubmit={handleSearchSubmit} className="relative">
               <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
@@ -104,7 +140,7 @@ function App() {
                 placeholder="Search city..."
                 className="pl-7 pr-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-teal-500/60 w-32 sm:w-40 font-medium"
               />
-            </div>
+            </form>
 
             {/* Persona Pills */}
             <div className="flex items-center bg-slate-950 p-1 rounded-lg border border-slate-800/80">
@@ -145,30 +181,30 @@ function App() {
           </div>
         </header>
 
-        {/* ================= 3. ENLARGED LIVE TELEMETRY BAR ================= */}
-        <EnvironmentalMetrics isSpike={isSimulatedSpike} />
+        {/* ================= 3. LIVE TELEMETRY BAR ================= */}
+        <EnvironmentalMetrics isSpike={isSimulatedSpike} envData={envData} />
 
-        {/* ================= 4. BENTO GRID 1: RISK DELTA & AI REASONING ================= */}
+        {/* ================= 4. BENTO GRID 1 ================= */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <DeltaView currentProfile={profile} score={currentScore} />
-          <GeminiReasoningCard profile={profile} />
+          <DeltaView currentProfile={profile} score={currentScore} envData={envData} />
+          <GeminiReasoningCard profile={profile} aiAdvisory={aiAdvisory} />
         </div>
 
-        {/* ================= 5. MAIN RISK GAUGE WORKSPACE ================= */}
-        <RiskGauge score={currentScore} advisory={getAdvisoryText()} />
+        {/* ================= 5. MAIN RISK GAUGE ================= */}
+        <RiskGauge score={currentScore} advisory={currentAdvisoryText} aiData={aiAdvisory} />
 
-        {/* ================= 6. BENTO GRID 2: RADAR MAP & PHYSIOLOGICAL SCAN ================= */}
+        {/* ================= 6. BENTO GRID 2 ================= */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <AQIMapView city={citySearch} score={currentScore} />
-          <PhysiologicalScan score={currentScore} />
+          <AQIMapView city={envData?.location || activeCity} score={currentScore} envData={envData} />
+          <PhysiologicalScan score={currentScore} profile={profile} />
         </div>
 
         {/* ================= 7. DEFENSE ACTIONS & VOICE ADVISORY ================= */}
-        <ActionMitigation score={currentScore} />
+        <ActionMitigation score={currentScore} aiAdvisory={aiAdvisory} />
 
-        <VoiceAdvisory text={getAdvisoryText()} />
+        <VoiceAdvisory text={currentAdvisoryText} />
 
-        <SafeHourChart />
+        <SafeHourChart historyData={historyData} />
 
         {/* Emergency Alert Banner */}
         <AnimatePresence>
