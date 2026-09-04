@@ -1,82 +1,119 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:5000";
+import type {
+  AdvisoryData,
+  EnvironmentData,
+  Persona,
+  RiskData,
+} from "../types";
 
-export interface EnvironmentData {
+const API_BASE_URL = "http://localhost:5000";
+
+type BackendEnvironmentResponse = {
   temperature: number;
   apparent_temp: number;
   humidity: number;
   uv_index: number;
   aqi: number;
   pm25: number;
-  pm10: number;
-  city?: string;
-}
+  pm10?: number;
+};
 
-export interface UserProfile {
-  age: number;
-  condition: string;
-  occupation: string;
-}
-
-export interface AdvisoryResponse {
+type BackendAdvisoryResponse = {
   risk_score: number;
   risk_level: string;
   headline: string;
   advisory: string;
   precautions: string[];
-  safe_window: string;
-}
-
-export async function checkBackendHealth() {
-  const response = await fetch(`${API_BASE_URL}/api/health`);
-
-  if (!response.ok) {
-    throw new Error("Backend is not responding");
-  }
-
-  return response.json();
-}
+  safe_window?: string;
+};
 
 export async function getEnvironmentalData(
-  lat?: number,
-  lon?: number
+  lat = 26.8467,
+  lon = 80.9462,
+  city = "Lucknow",
 ): Promise<EnvironmentData> {
-  const params = new URLSearchParams();
-
-  if (lat !== undefined) params.set("lat", String(lat));
-  if (lon !== undefined) params.set("lon", String(lon));
-
-  const query = params.toString();
-
   const response = await fetch(
-    `${API_BASE_URL}/api/environmental-data${query ? `?${query}` : ""}`
+    `${API_BASE_URL}/api/environmental-data?lat=${lat}&lon=${lon}`,
   );
 
   if (!response.ok) {
-    throw new Error("Unable to fetch environmental data");
+    throw new Error("Failed to fetch environmental data");
   }
 
-  return response.json();
+  const data: BackendEnvironmentResponse = await response.json();
+
+  return {
+    city,
+    temperature: data.temperature,
+    humidity: data.humidity,
+    uvIndex: data.uv_index,
+    aqi: data.aqi,
+    pm25: data.pm25,
+  };
 }
 
 export async function getAdvisory(
-  profile: UserProfile,
-  envData: EnvironmentData
-): Promise<AdvisoryResponse> {
+  persona: Persona,
+  environment: EnvironmentData,
+): Promise<{
+  risk: RiskData;
+  advisory: AdvisoryData;
+}> {
   const response = await fetch(`${API_BASE_URL}/api/advisory`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      profile,
-      envData,
+      profile: {
+        age: persona.age,
+        condition: persona.healthCondition,
+        occupation: persona.occupation,
+      },
+      envData: {
+        temperature: environment.temperature,
+        aqi: environment.aqi,
+        pm25: environment.pm25,
+        uv_index: environment.uvIndex,
+      },
     }),
   });
 
   if (!response.ok) {
-    throw new Error("Unable to generate health advisory");
+    throw new Error("Failed to generate health advisory");
   }
 
-  return response.json();
+  const data: BackendAdvisoryResponse = await response.json();
+
+  const normalizedLevel = data.risk_level.toUpperCase();
+
+  const level: RiskData["level"] =
+    normalizedLevel === "CRITICAL"
+      ? "CRITICAL"
+      : normalizedLevel === "HIGH"
+        ? "HIGH"
+        : normalizedLevel === "LOW"
+          ? "LOW"
+          : "MODERATE";
+
+  return {
+    risk: {
+      score: data.risk_score,
+      level,
+    },
+    advisory: {
+      headline: data.headline,
+      advisory: data.advisory,
+      precautions: data.precautions,
+      safeWindow: data.safe_window,
+    },
+  };
+}
+
+export async function checkBackendHealth(): Promise<boolean> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/health`);
+    return response.ok;
+  } catch {
+    return false;
+  }
 }

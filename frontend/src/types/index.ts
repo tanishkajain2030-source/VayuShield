@@ -20,9 +20,10 @@ export type AdvisoryData = {
   headline: string;
   advisory: string;
   precautions: string[];
+  safeWindow?: string;
 };
 
 export type RiskData = {
   score: number;
-  level: "LOW" | "MODERATE" | "HIGH";
+  level: "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
 };
