@@ -50,7 +50,7 @@ async function getCoordinates(cityName) {
 
 // Health Checks
 app.get('/api/health', (req, res) => res.json({ status: 'VayuShield Backend Active' }));
-app.get('/', (req, res) => res.send('VayuShield API is running...'));
+app.get('/', (req, res) => res.json({ status: 'VayuShield Backend Active' }));
 
 // Environmental Data Endpoint
 app.get('/api/environmental-data', async (req, res, next) => {
@@ -58,6 +58,7 @@ app.get('/api/environmental-data', async (req, res, next) => {
     let { city, lat, lon } = req.query;
     let cityName = city || 'Delhi';
 
+    // Force fresh lookup if city parameter is explicitly provided
     if (city || (!lat && !lon)) {
       const geo = await getCoordinates(cityName);
       lat = geo.lat;
@@ -65,7 +66,8 @@ app.get('/api/environmental-data', async (req, res, next) => {
       cityName = geo.name;
     }
 
-    const cacheKey = `env_${lat}_${lon}`;
+    // Cache using normalized city name instead of floating point lat/lon
+    const cacheKey = `env_${cityName.toLowerCase().replace(/\s+/g, '')}`;
     const cachedData = cache.get(cacheKey);
     if (cachedData) return res.json(cachedData);
 
