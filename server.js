@@ -8,16 +8,21 @@ const { GoogleGenAI } = require('@google/genai');
 const app = express();
 const cache = new NodeCache({ stdTTL: 600 }); // Cache responses for 10 minutes
 
-// Allow Vercel production domains and local development
+// 1. CORS Configuration (Allows Vercel, Render, and Localhost)
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000', /\.vercel\.app$/],
-  methods: ['GET', 'POST'],
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
+
 app.use(express.json());
 
 const PORT = process.env.PORT || 5000;
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Initialize Google Gemini AI safely
+const apiKey = process.env.GEMINI_API_KEY || '';
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 // Helper: Geocode city name to lat/lon
 async function getCoordinates(cityName) {
@@ -43,10 +48,11 @@ async function getCoordinates(cityName) {
   return result;
 }
 
-// 1. Health Check
+// Health Checks
 app.get('/api/health', (req, res) => res.json({ status: 'VayuShield Backend Active' }));
 app.get('/', (req, res) => res.send('VayuShield API is running...'));
-// 2. Dynamic Environmental Data (With Caching)
+
+// Environmental Data Endpoint
 app.get('/api/environmental-data', async (req, res, next) => {
   try {
     let { city, lat, lon } = req.query;
@@ -91,7 +97,7 @@ app.get('/api/environmental-data', async (req, res, next) => {
   }
 });
 
-// 3. NEW: SafePath Route Comparison (Compare Two Cities Side-by-Side)
+// Compare Locations Endpoint
 app.get('/api/compare-locations', async (req, res, next) => {
   try {
     const cityA = req.query.origin || 'Delhi';
@@ -115,7 +121,7 @@ app.get('/api/compare-locations', async (req, res, next) => {
   }
 });
 
-// 4. 7-Day History Endpoint
+// 7-Day History Endpoint
 app.get('/api/history', async (req, res, next) => {
   try {
     let { lat, lon, city } = req.query;
@@ -143,9 +149,13 @@ app.get('/api/history', async (req, res, next) => {
   }
 });
 
-// 5. Gemini AI Personalised Advisory Endpoint
+// Gemini AI Advisory Endpoint
 app.post('/api/advisory', async (req, res, next) => {
   try {
+    if (!ai) {
+      throw new Error("GEMINI_API_KEY is missing on server.");
+    }
+
     const { profile, envData } = req.body || {};
 
     const prompt = `
@@ -165,14 +175,19 @@ app.post('/api/advisory', async (req, res, next) => {
     }
     `;
 
+    // Correct SDK call structure for @google/genai
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
-      config: { responseMimeType: 'application/json' },
+      config: {
+        responseMimeType: 'application/json'
+      }
     });
 
     res.json(JSON.parse(response.text));
   } catch (error) {
+    console.error("Gemini AI API Error:", error.message);
+    // Fallback response if Gemini AI times out or key is missing
     res.json({
       risk_score: 85,
       risk_level: "High",
@@ -184,7 +199,7 @@ app.post('/api/advisory', async (req, res, next) => {
   }
 });
 
-// 6. Mock Route
+// Mock Route
 app.get('/api/mock-advisory', (req, res) => {
   res.json({
     risk_score: 42,
@@ -205,3 +220,5 @@ app.use((err, req, res, next) => {
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`VayuShield Backend active on port ${PORT}`);
 });
+
+module.exports = app;
